@@ -70,7 +70,7 @@ int get_column_from_user() {
 
 void place_piece(board b, int column, bool playerturn) {
 	char sym = playerturn ? PLAYER_SYMBOL : AI_SYMBOL;
-	for (int i = ROWS; i >= 0; i--) {
+	for (int i = ROWS - 1; i >= 0; i--) {
 		if (b[i][column] == EMPTY_SYMBOL) {
 			b[i][column] = sym;
 			return;

@@ -1,6 +1,5 @@
 #include <limits.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #define true  1
@@ -29,7 +28,7 @@ typedef unsigned char bool;
 typedef char board[ROWS][COLS];
 enum WINNER { PLAYER, AI, DRAW, INVALID };
 
-struct minimax_eval {
+struct mm_res {
 	int column;
 	int score;
 };
@@ -40,7 +39,7 @@ struct chain {
 };
 
 void print_board(board b) {
-	// printf(CLEAR);
+	printf(CLEAR);
 	for (int i = 0; i < ROWS; i++) {
 		for (int j = 0; j < COLS; j++) {
 			char *clr = RESET;
@@ -226,7 +225,7 @@ bool is_valid_position(const int r1, const int c1, const int r2, const int c2) {
  * @brief returns a score for a user based on their longest chain so far, with
  * additional points if their chain is open from each end
  */
-int determine_sequence_score(board b, const bool playerturn) {
+int compute_chain_score(board b, const bool playerturn) {
 	struct chain longest = {INT_MIN, 0};
 	bool open			 = false;
 	int score = 0, r = 0, c = 0;
@@ -322,8 +321,8 @@ int evaluate_heuristic(board b, enum WINNER w) {
 	else if (w == DRAW)
 		return score;
 
-	score += determine_sequence_score(b, true);
-	score -= determine_sequence_score(b, false);
+	score += compute_chain_score(b, true);
+	score -= compute_chain_score(b, false);
 
 	score += piece_location_score(b, true);
 	score -= piece_location_score(b, false);
@@ -346,44 +345,40 @@ enum WINNER terminal_state_reached(board b) {
 		return INVALID;
 }
 
-struct minimax_eval alphabeta(board b, const int depth, int alpha, int beta,
-							  const bool playerturn) {
-	enum WINNER w = terminal_state_reached(b);
-	struct minimax_eval ret = {.column = 6,
-							   .score  = playerturn ? INT_MIN : INT_MAX};
+struct mm_res alphabeta(board b, const int depth, int alpha, int beta,
+						const bool playerturn) {
+	enum WINNER w	   = terminal_state_reached(b);
+	struct mm_res best = {.column = 5, .score = playerturn ? INT_MIN : INT_MAX};
 
 	if (depth <= 0 || w != INVALID) {
-		ret.score = evaluate_heuristic(b, w);
-		return ret;
+		best.score = evaluate_heuristic(b, w);
+		return best;
 	}
 
-	for (int i = 0; i < COLS; i++) {
+	/* TODO: traverse more likely columns first */
+
+	for (int i = 0; i < COLS && alpha < beta; i++) {
 		if (b[0][i] != EMPTY_SYMBOL) /* is full column */
 			continue;
+
 		place_piece(b, i, playerturn);
-		struct minimax_eval curr =
-			alphabeta(b, depth - 1, alpha, beta, !playerturn);
-		curr.column = i;
+		struct mm_res child = alphabeta(b, depth - 1, alpha, beta, !playerturn);
 		remove_piece(b, i);
 
+		child.column = i;
+
 		if (playerturn) {
-			if (curr.score > ret.score)
-				ret = curr;
-			alpha = MAX(ret.score, alpha);
-
-			/* if (ret.score > beta) */
-			/* 	break; */
+			if (child.score > best.score)
+				best = child;
+			alpha = MAX(best.score, alpha);
 		} else {
-			if (curr.score < ret.score)
-				ret = curr;
-			beta = MIN(ret.score, beta);
-
-			/* if (ret.score > alpha) */
-			/* 	break; */
+			if (child.score < best.score)
+				best = child;
+			beta = MIN(best.score, beta);
 		}
 	}
 
-	return ret;
+	return best;
 }
 
 void ai_turn(board b) {

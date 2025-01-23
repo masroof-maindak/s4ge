@@ -103,7 +103,7 @@ void player_turn(board b) {
 /*
  *	- - -
  *	- - -
- *	+ + +
+ *	x + +
  */
 int horizontal_chain_length(const board b, const int ri, const int ci,
 							const char symbol) {
@@ -120,7 +120,7 @@ int horizontal_chain_length(const board b, const int ri, const int ci,
 }
 
 /*
- *	- + -
+ *	- x -
  *	- + -
  *	- + -
  */
@@ -139,7 +139,7 @@ int vertical_chain_length(const board b, const int ri, const int ci,
 }
 
 /*
- *	+ - -
+ *	x - -
  *	- + -
  *	- - +
  */
@@ -158,7 +158,7 @@ int diagonal1_chain_length(const board b, const int ri, const int ci,
 }
 
 /*
- *	- - +
+ *	- - x
  *	- + -
  *	+ - -
  */
@@ -191,7 +191,7 @@ struct chain longest_chain_from_point(const board b, const int ri, const int ci,
 	return ret;
 }
 
-int is_winner(const board b, const bool playerturn) {
+bool is_winner(const board b, const bool playerturn) {
 	/* TODO(?): multithread */
 
 	for (int i = 0; i < ROWS; i++)
@@ -211,41 +211,61 @@ int is_draw(const board b) {
 	return true;
 }
 
+inline bool is_valid_position(const int r1, const int c1, const int r2,
+							  const int c2) {
+	return (r1 >= 0 && r1 < ROWS && c1 >= 0 && c1 < COLS && r2 >= 0 &&
+			r2 < ROWS && c2 >= 0 && c2 < COLS);
+}
+
 /*
  * @brief returns a score for a user based on their longest chain so far, with
  * additional points if their chain is open from each end
  */
 int determine_sequence_score(const board b, const bool playerturn) {
-	const char sym = playerturn ? PLAYER_SYMBOL : AI_SYMBOL;
-	int score = 0, ri = 0, ci = 0;
 	struct chain longest = {INT_MIN, 0};
+	const char sym		 = playerturn ? PLAYER_SYMBOL : AI_SYMBOL;
+	bool open			 = false;
+	int score = 0, r = 0, c = 0;
 
 	for (int i = 0; i < ROWS; i++) {
 		for (int j = 0; j < COLS; j++) {
 			struct chain curr = longest_chain_from_point(b, i, j, playerturn);
 			if (curr.length > longest.length) {
 				longest = curr;
-				ri		= i;
-				ci		= j;
+				r		= i;
+				c		= j;
 			}
 		}
 	}
 
-	/* TODO */
-	if (longest.length == 3) {
-		switch (longest.orient) {
-		case HORIZ:
-			break;
-		case VERT:
-			break;
-		case DIAG1:
-			break;
-		case DIAG2:
-			break;
-		}
+	score = longest.length * 10;
+
+	if (longest.length < 3)
+		return score;
+
+	switch (longest.orient) {
+	case HORIZ:
+		open = is_valid_position(r, c - 1, r, c + WIN_COUNT) &&
+			   (b[r][c - 1] == EMPTY_SYMBOL &&
+				b[r][c + WIN_COUNT] == EMPTY_SYMBOL);
+		break;
+	case VERT:
+		open = is_valid_position(r - 1, c, r + WIN_COUNT, c) &&
+			   (b[r - 1][c] == EMPTY_SYMBOL &&
+				b[r + WIN_COUNT][c] == EMPTY_SYMBOL);
+		break;
+	case DIAG1:
+		open = is_valid_position(r - 1, c - 1, r + WIN_COUNT, c + WIN_COUNT) &&
+			   (b[r - 1][c - 1] == EMPTY_SYMBOL &&
+				b[r + WIN_COUNT][c + WIN_COUNT] == EMPTY_SYMBOL);
+		break;
+	case DIAG2:
+		open = is_valid_position(r - 1, c + 1, r + WIN_COUNT, c - WIN_COUNT) &&
+			   (b[r - 1][c + 1] == EMPTY_SYMBOL &&
+				b[r + WIN_COUNT][c - WIN_COUNT] == EMPTY_SYMBOL);
 	}
 
-	return score * 10;
+	return open ? score + 100 : score;
 }
 
 /*
@@ -296,6 +316,9 @@ int evaluate_heuristic(const board b) {
 	if (is_winner(b, false))
 		return INT_MIN;
 
+	if (is_draw(b))
+		return score;
+
 	score += determine_sequence_score(b, true);
 	score -= determine_sequence_score(b, false);
 
@@ -305,24 +328,31 @@ int evaluate_heuristic(const board b) {
 	return score;
 }
 
+bool terminal_state_reached(const board b) {
+	return is_draw(b) || is_winner(b, true) || is_winner(b, false);
+}
+
 struct minimax_eval minimax(board b, int depth, int alpha, int beta,
 							bool playerturn) {
 	struct minimax_eval ret = {0, 0};
 
-	if (depth == MAX_DEPTH)
-		return ret;
+	if (depth == MAX_DEPTH || terminal_state_reached(b)) {
+		int score = evaluate_heuristic(b);
+		return (struct minimax_eval){-1, score};
+	}
 
 	for (int i = 0; i < COLS; i++) {
 		if (b[0][i] != EMPTY_SYMBOL) /* is full column */
 			continue;
-
 		place_piece(b, i, false);
-
-		/* recursive call/heuristic determination here */
-
+		ret = minimax(b, depth - 1, alpha, beta, !playerturn);
 		remove_piece(b, i);
+		/* Updating alpha/beta */
+		if (playerturn) {
 
-		/* some other shit here? Updating alpha/beta if needed, I think */
+		} else {
+
+		}
 	}
 
 	return ret;

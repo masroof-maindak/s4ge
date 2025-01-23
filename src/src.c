@@ -16,30 +16,33 @@ typedef unsigned char bool;
 
 #define MAX_DEPTH 6
 
-#define RESET		 "\x1b[0m"
-#define RED			 "\x1b[31m"
-#define GREEN		 "\x1b[32m"
-#define YELLOW		 "\x1b[33m"
-#define BLUE		 "\x1b[34m"
-#define MAGENTA		 "\x1b[35m"
-#define CYAN		 "\x1b[36m"
-#define WHITE		 "\x1b[37m"
-#define BOLD_RED	 "\x1b[1;31m"
-#define BOLD_GREEN	 "\x1b[1;32m"
-#define BOLD_YELLOW	 "\x1b[1;33m"
-#define BOLD_BLUE	 "\x1b[1;34m"
-#define BOLD_MAGENTA "\x1b[1;35m"
-#define BOLD_CYAN	 "\x1b[1;36m"
-#define BOLD_WHITE	 "\x1b[1;37m"
+#define RESET	"\x1b[0m"
+#define RED		"\x1b[31m"
+#define GREEN	"\x1b[32m"
+#define YELLOW	"\x1b[33m"
+#define BLUE	"\x1b[34m"
+#define MAGENTA "\x1b[35m"
+#define CYAN	"\x1b[36m"
+#define WHITE	"\x1b[37m"
+
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))
 
 typedef char board[ROWS][COLS];
 enum WINNER { PLAYER, AI, NONE, INVALID };
+
 struct minimax_eval {
 	int column;
 	int score;
 };
 
-void print_board(board b) {
+struct chain {
+	int length;
+	enum orientation { VERT, HORIZ, DIAG1, DIAG2 } orient;
+};
+
+#include <stdlib.h>
+void print_board(const board b) {
+	system("clear");
 	for (int i = 0; i < ROWS; i++) {
 		for (int j = 0; j < COLS; j++) {
 			printf("%c ", b[i][j]);
@@ -69,7 +72,7 @@ int get_column_from_user() {
 }
 
 void place_piece(board b, int column, bool playerturn) {
-	char sym = playerturn ? PLAYER_SYMBOL : AI_SYMBOL;
+	const char sym = playerturn ? PLAYER_SYMBOL : AI_SYMBOL;
 	for (int i = ROWS - 1; i >= 0; i--) {
 		if (b[i][column] == EMPTY_SYMBOL) {
 			b[i][column] = sym;
@@ -95,8 +98,6 @@ void player_turn(board b) {
 	} while (b[0][usercol] != EMPTY_SYMBOL); /* is full column */
 
 	place_piece(b, usercol, true);
-
-	return;
 }
 
 /*
@@ -104,7 +105,8 @@ void player_turn(board b) {
  *	- - -
  *	+ + +
  */
-bool horizontal_win_check(board b, int ri, int ci, char symbol) {
+int horizontal_chain_length(const board b, const int ri, const int ci,
+							const char symbol) {
 	int count = 0;
 
 	if (ci + WIN_COUNT - 1 >= COLS)
@@ -114,7 +116,7 @@ bool horizontal_win_check(board b, int ri, int ci, char symbol) {
 		if (b[ri][ci + i] == symbol)
 			count++;
 
-	return count == WIN_COUNT;
+	return count;
 }
 
 /*
@@ -122,7 +124,8 @@ bool horizontal_win_check(board b, int ri, int ci, char symbol) {
  *	- + -
  *	- + -
  */
-bool vertical_win_check(board b, int ri, int ci, char symbol) {
+int vertical_chain_length(const board b, const int ri, const int ci,
+						  const char symbol) {
 	int count = 0;
 
 	if (ri + WIN_COUNT - 1 >= ROWS)
@@ -132,7 +135,7 @@ bool vertical_win_check(board b, int ri, int ci, char symbol) {
 		if (b[ri + i][ci] == symbol)
 			count++;
 
-	return count == WIN_COUNT;
+	return count;
 }
 
 /*
@@ -140,7 +143,8 @@ bool vertical_win_check(board b, int ri, int ci, char symbol) {
  *	- + -
  *	- - +
  */
-bool diagonal1_win_check(board b, int ri, int ci, char symbol) {
+int diagonal1_chain_length(const board b, const int ri, const int ci,
+						   const char symbol) {
 	int count = 0;
 
 	if (ri + WIN_COUNT - 1 >= ROWS || ci + WIN_COUNT - 1 >= COLS)
@@ -150,7 +154,7 @@ bool diagonal1_win_check(board b, int ri, int ci, char symbol) {
 		if (b[ri + i][ci + i] == symbol)
 			count++;
 
-	return count == WIN_COUNT;
+	return count;
 }
 
 /*
@@ -158,7 +162,8 @@ bool diagonal1_win_check(board b, int ri, int ci, char symbol) {
  *	- + -
  *	+ - -
  */
-bool diagonal2_win_check(board b, int ri, int ci, char symbol) {
+int diagonal2_chain_length(const board b, const int ri, const int ci,
+						   const char symbol) {
 	int count = 0;
 
 	if (ri + WIN_COUNT - 1 >= ROWS || ci - WIN_COUNT + 1 < 0)
@@ -168,26 +173,37 @@ bool diagonal2_win_check(board b, int ri, int ci, char symbol) {
 		if (b[ri + i][ci - i] == symbol)
 			count++;
 
-	return count == WIN_COUNT;
+	return count;
 }
 
-bool is_winner(board b, bool playerturn) {
-	char sym = playerturn ? PLAYER_SYMBOL : AI_SYMBOL;
+struct chain longest_chain_from_point(const board b, const int ri, const int ci,
+									  bool playerturn) {
+	const char sym	 = playerturn ? PLAYER_SYMBOL : AI_SYMBOL;
+	struct chain ret = {INT_MIN, 0};
 
+	int w = horizontal_chain_length(b, ri, ci, sym);
+	int x = vertical_chain_length(b, ri, ci, sym);
+	int y = diagonal1_chain_length(b, ri, ci, sym);
+	int z = diagonal2_chain_length(b, ri, ci, sym);
+
+	ret = (w > x) ? (struct chain){w, HORIZ} : (struct chain){x, VERT};
+
+	return ret;
+}
+
+int is_winner(const board b, const bool playerturn) {
 	/* TODO(?): multithread */
 
 	for (int i = 0; i < ROWS; i++)
 		for (int j = 0; j < COLS; j++)
-			if (horizontal_win_check(b, i, j, sym) ||
-				vertical_win_check(b, i, j, sym) ||
-				diagonal1_win_check(b, i, j, sym) ||
-				diagonal2_win_check(b, i, j, sym))
+			if (longest_chain_from_point(b, i, j, playerturn).length ==
+				WIN_COUNT)
 				return true;
 
 	return false;
 }
 
-bool is_draw(board b) {
+int is_draw(const board b) {
 	for (int i = 0; i < ROWS; i++)
 		for (int j = 0; j < COLS; j++)
 			if (b[i][j] == EMPTY_SYMBOL)
@@ -195,25 +211,96 @@ bool is_draw(board b) {
 	return true;
 }
 
-int evaluate_heuristic(board b, bool playerturn) {
+/*
+ * @brief returns a score for a user based on their longest chain so far, with
+ * additional points if their chain is open from each end
+ */
+int determine_sequence_score(const board b, const bool playerturn) {
+	const char sym = playerturn ? PLAYER_SYMBOL : AI_SYMBOL;
+	int score = 0, ri = 0, ci = 0;
+	struct chain longest = {INT_MIN, 0};
+
+	for (int i = 0; i < ROWS; i++) {
+		for (int j = 0; j < COLS; j++) {
+			struct chain curr = longest_chain_from_point(b, i, j, playerturn);
+			if (curr.length > longest.length) {
+				longest = curr;
+				ri		= i;
+				ci		= j;
+			}
+		}
+	}
+
+	/* TODO */
+	if (longest.length == 3) {
+		switch (longest.orient) {
+		case HORIZ:
+			break;
+		case VERT:
+			break;
+		case DIAG1:
+			break;
+		case DIAG2:
+			break;
+		}
+	}
+
+	return score * 10;
+}
+
+/*
+ * @brief returns a score for a user based on where their pieces are on the
+ * board; pieces towards the center are worth more
+ */
+int piece_location_score(const board b, const bool playerturn) {
+	const int center = COLS / 2;
+	const char sym	 = playerturn ? PLAYER_SYMBOL : AI_SYMBOL;
+	int score		 = 0;
+
+	/* Piece Value: +0 +1 +2 +3 +2 +1 +0 */
+	/* Columns:      0  1  2  3  4  5  6 */
+
+	for (int i = center - 2; i <= center + 2; i++) {
+		for (int j = ROWS - 1; b[j][i] != EMPTY_SYMBOL || j >= 0; j--) {
+			if (b[j][i] == sym) {
+				switch (i) {
+				case 3:
+					score += 1;
+					/* FALLTHRU */
+				case 2:
+				case 4:
+					score += 1;
+					/* FALLTHRU */
+				case 1:
+				case 5:
+					score += 1;
+				}
+			}
+		}
+	}
+
+	return score;
+}
+
+/*
+ * @brief evaluates the 'score' of a board w.r.t the player and the AI -- the
+ * player's score would be increasingly positive, and the AI's would be
+ * increasingly negative.
+ */
+int evaluate_heuristic(const board b) {
 	int score = 0;
 
-	/* TODO: Double check return values */
-
-	if (is_winner(b, playerturn))
+	if (is_winner(b, true))
 		return INT_MAX;
 
-	if (is_winner(b, !playerturn))
+	if (is_winner(b, false))
 		return INT_MIN;
 
-	/*
-	 * CHECK: What other heuristics could I keep?
-	 *
-	 * 1. My longest connecting sequence is longer than opponent's? Obvious.
-	 * 2. Prefer more pieces in the center? Makes sense as more paths possible.
-	 * 3. Just stopped opponent from connecting 4? Ideal but how to check this?
-	 * 4. My longest connecting sequence is accessible from both ends?
-	 */
+	score += determine_sequence_score(b, true);
+	score -= determine_sequence_score(b, false);
+
+	score += piece_location_score(b, true);
+	score -= piece_location_score(b, false);
 
 	return score;
 }
@@ -266,7 +353,8 @@ int main() {
 	print_board(b);
 
 	switch (w) {
-	case PLAYER: printf("Player wins!\n");
+	case PLAYER:
+		printf("Player wins!\n");
 		break;
 	case AI:
 		printf("AI wins!\n");

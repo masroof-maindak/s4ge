@@ -1,5 +1,6 @@
 #include <limits.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define true  1
@@ -29,7 +30,7 @@ typedef unsigned char bool;
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 
 typedef char board[ROWS][COLS];
-enum WINNER { PLAYER, AI, NONE, INVALID };
+enum WINNER { PLAYER, AI, DRAW, INVALID };
 
 struct minimax_eval {
 	int column;
@@ -41,8 +42,7 @@ struct chain {
 	enum orientation { VERT = 0, HORIZ, DIAG1, DIAG2 } orient;
 };
 
-#include <stdlib.h>
-void print_board(const board b) {
+void print_board(board b) {
 	system("clear");
 	for (int i = 0; i < ROWS; i++) {
 		for (int j = 0; j < COLS; j++) {
@@ -106,7 +106,7 @@ void player_turn(board b) {
  *	- - -
  *	x + +
  */
-int horizontal_chain_length(const board b, const int ri, const int ci,
+int horizontal_chain_length(board b, const int ri, const int ci,
 							const char symbol) {
 	int count = 0;
 
@@ -125,7 +125,7 @@ int horizontal_chain_length(const board b, const int ri, const int ci,
  *	- + -
  *	- + -
  */
-int vertical_chain_length(const board b, const int ri, const int ci,
+int vertical_chain_length(board b, const int ri, const int ci,
 						  const char symbol) {
 	int count = 0;
 
@@ -144,7 +144,7 @@ int vertical_chain_length(const board b, const int ri, const int ci,
  *	- + -
  *	- - +
  */
-int diagonal1_chain_length(const board b, const int ri, const int ci,
+int diagonal1_chain_length(board b, const int ri, const int ci,
 						   const char symbol) {
 	int count = 0;
 
@@ -163,7 +163,7 @@ int diagonal1_chain_length(const board b, const int ri, const int ci,
  *	- + -
  *	+ - -
  */
-int diagonal2_chain_length(const board b, const int ri, const int ci,
+int diagonal2_chain_length(board b, const int ri, const int ci,
 						   const char symbol) {
 	int count = 0;
 
@@ -177,7 +177,7 @@ int diagonal2_chain_length(const board b, const int ri, const int ci,
 	return count;
 }
 
-struct chain longest_chain_from_point(const board b, const int ri, const int ci,
+struct chain longest_chain_from_point(board b, const int ri, const int ci,
 									  bool playerturn) {
 	const char sym	 = playerturn ? PLAYER_SYMBOL : AI_SYMBOL;
 	struct chain ret = {INT_MIN, 0};
@@ -195,7 +195,7 @@ struct chain longest_chain_from_point(const board b, const int ri, const int ci,
 	return ret;
 }
 
-bool is_winner(const board b, const bool playerturn) {
+bool is_winner(board b, const bool playerturn) {
 	/* TODO(?): multithread */
 
 	for (int i = 0; i < ROWS; i++)
@@ -207,7 +207,7 @@ bool is_winner(const board b, const bool playerturn) {
 	return false;
 }
 
-int is_draw(const board b) {
+int is_draw(board b) {
 	for (int i = 0; i < COLS; i++)
 		if (b[0][i] == EMPTY_SYMBOL)
 			return false;
@@ -224,7 +224,7 @@ bool is_valid_position(const int r1, const int c1, const int r2, const int c2) {
  * @brief returns a score for a user based on their longest chain so far, with
  * additional points if their chain is open from each end
  */
-int determine_sequence_score(const board b, const bool playerturn) {
+int determine_sequence_score(board b, const bool playerturn) {
 	struct chain longest = {INT_MIN, 0};
 	bool open			 = false;
 	int score = 0, r = 0, c = 0;
@@ -274,7 +274,7 @@ int determine_sequence_score(const board b, const bool playerturn) {
  * @brief returns a score for a user based on where their pieces are on the
  * board; pieces towards the center are worth more
  */
-int piece_location_score(const board b, const bool playerturn) {
+int piece_location_score(board b, const bool playerturn) {
 	const int center = COLS / 2;
 	const char sym	 = playerturn ? PLAYER_SYMBOL : AI_SYMBOL;
 	int score		 = 0;
@@ -283,7 +283,7 @@ int piece_location_score(const board b, const bool playerturn) {
 	/* Columns:      0  1  2  3  4  5  6 */
 
 	for (int i = center - 2; i <= center + 2; i++) {
-		for (int j = ROWS - 1; b[j][i] != EMPTY_SYMBOL || j >= 0; j--) {
+		for (int j = ROWS - 1; j >= 0; j--) {
 			if (b[j][i] == sym) {
 				switch (i) {
 				case 3:
@@ -309,16 +309,14 @@ int piece_location_score(const board b, const bool playerturn) {
  * player's score would be increasingly positive, and the AI's would be
  * increasingly negative.
  */
-int evaluate_heuristic(const board b) {
+int evaluate_heuristic(board b, enum WINNER w) {
 	int score = 0;
 
-	if (is_winner(b, true))
+	if (w == PLAYER)
 		return INT_MAX;
-
-	if (is_winner(b, false))
+	else if (w == AI)
 		return INT_MIN;
-
-	if (is_draw(b))
+	else if (w == DRAW)
 		return score;
 
 	score += determine_sequence_score(b, true);
@@ -330,50 +328,55 @@ int evaluate_heuristic(const board b) {
 	return score;
 }
 
-bool terminal_state_reached(const board b) {
-	return is_draw(b) || is_winner(b, true) || is_winner(b, false);
+/*
+ * @brief determines if the game is over i.e minimax node has reached a terminal
+ * state
+ */
+enum WINNER terminal_state_reached(board b) {
+	if (is_draw(b))
+		return DRAW;
+	else if (is_winner(b, true))
+		return PLAYER;
+	else if (is_winner(b, false))
+		return AI;
+	else
+		return INVALID;
 }
 
-struct minimax_eval alphabeta(board b, int depth, int alpha, int beta,
-							  bool playerturn) {
-	if (depth == MAX_DEPTH || terminal_state_reached(b)) {
-		int score = evaluate_heuristic(b);
-		return (struct minimax_eval){-1, score};
+struct minimax_eval alphabeta(board b, const int depth, int alpha, int beta,
+							  const bool playerturn) {
+	enum WINNER w = terminal_state_reached(b);
+	struct minimax_eval ret = {.column = 6,
+							   .score  = playerturn ? INT_MIN : INT_MAX};
+
+	if (depth <= 0 || w != INVALID) {
+		ret.score = evaluate_heuristic(b, w);
+		return ret;
 	}
 
-	struct minimax_eval ret = {-1, 0};
+	for (int i = 0; i < COLS; i++) {
+		if (b[0][i] != EMPTY_SYMBOL) /* is full column */
+			continue;
+		place_piece(b, i, playerturn);
+		struct minimax_eval curr =
+			alphabeta(b, depth - 1, alpha, beta, !playerturn);
+		curr.column = i;
+		remove_piece(b, i);
 
-	if (playerturn) {
-		ret.score = INT_MIN;
-		for (int i = 0; i < COLS; i++) {
-			if (b[0][i] != EMPTY_SYMBOL) /* is full column */
-				continue;
-			place_piece(b, i, false);
-			struct minimax_eval curr =
-				alphabeta(b, depth - 1, alpha, beta, false);
-			remove_piece(b, i);
-
+		if (playerturn) {
 			if (curr.score > ret.score)
 				ret = curr;
 			alpha = MAX(ret.score, alpha);
-			if (ret.score > beta)
-				break;
-		}
-	} else {
-		ret.score = INT_MAX;
-		for (int i = 0; i < COLS; i++) {
-			if (b[0][i] != EMPTY_SYMBOL) /* is full column */
-				continue;
-			place_piece(b, i, false);
-			struct minimax_eval curr =
-				alphabeta(b, depth - 1, alpha, beta, true);
-			remove_piece(b, i);
 
+			/* if (ret.score > beta) */
+			/* 	break; */
+		} else {
 			if (curr.score < ret.score)
 				ret = curr;
 			beta = MIN(ret.score, beta);
-			if (ret.score > alpha)
-				break;
+
+			/* if (ret.score > alpha) */
+			/* 	break; */
 		}
 	}
 
@@ -381,40 +384,30 @@ struct minimax_eval alphabeta(board b, int depth, int alpha, int beta,
 }
 
 void ai_turn(board b) {
-	int aicolumn = alphabeta(b, 0, INT_MIN, INT_MAX, false).column;
+	int aicolumn = alphabeta(b, MAX_DEPTH, INT_MIN, INT_MAX, false).column;
 	place_piece(b, aicolumn, false);
 }
 
 int main() {
 	board b;
-	enum WINNER w = INVALID;
+	bool playerturn = true;
+	enum WINNER w	= INVALID;
 
 	memset(b, EMPTY_SYMBOL, ROWS * COLS);
 
-	for (bool playerturn = true; w == INVALID; playerturn = !playerturn) {
+	while (w == INVALID) {
 		print_board(b);
 		playerturn ? player_turn(b) : ai_turn(b);
-		if (is_draw(b))
-			w = NONE;
-		else if (is_winner(b, playerturn))
-			w = playerturn ? PLAYER : AI;
+		w		   = terminal_state_reached(b);
+		playerturn = !playerturn;
 	}
 
 	print_board(b);
 
-	switch (w) {
-	case PLAYER:
-		printf("Player wins!\n");
-		break;
-	case AI:
-		printf("AI wins!\n");
-		break;
-	case NONE:
-		printf("Draw!\n");
-		break;
-	case INVALID:
-		break;
-	}
+	if (w == DRAW)
+		printf("Draw.\n");
+	else
+		printf("%s wins.\n", w == PLAYER ? "Player" : "AI");
 
 	return 0;
 }

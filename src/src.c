@@ -26,6 +26,7 @@ typedef unsigned char bool;
 #define WHITE	"\x1b[37m"
 
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
 
 typedef char board[ROWS][COLS];
 enum WINNER { PLAYER, AI, NONE, INVALID };
@@ -37,7 +38,7 @@ struct minimax_eval {
 
 struct chain {
 	int length;
-	enum orientation { VERT, HORIZ, DIAG1, DIAG2 } orient;
+	enum orientation { VERT = 0, HORIZ, DIAG1, DIAG2 } orient;
 };
 
 #include <stdlib.h>
@@ -180,13 +181,16 @@ struct chain longest_chain_from_point(const board b, const int ri, const int ci,
 									  bool playerturn) {
 	const char sym	 = playerturn ? PLAYER_SYMBOL : AI_SYMBOL;
 	struct chain ret = {INT_MIN, 0};
+	int len[4];
 
-	int w = horizontal_chain_length(b, ri, ci, sym);
-	int x = vertical_chain_length(b, ri, ci, sym);
-	int y = diagonal1_chain_length(b, ri, ci, sym);
-	int z = diagonal2_chain_length(b, ri, ci, sym);
+	len[0] = vertical_chain_length(b, ri, ci, sym);
+	len[1] = horizontal_chain_length(b, ri, ci, sym);
+	len[2] = diagonal1_chain_length(b, ri, ci, sym);
+	len[3] = diagonal2_chain_length(b, ri, ci, sym);
 
-	ret = (w > x) ? (struct chain){w, HORIZ} : (struct chain){x, VERT};
+	for (int i = 0; i < 4; i++)
+		if (ret.length < len[i])
+			ret = (struct chain){len[i], i};
 
 	return ret;
 }
@@ -204,15 +208,14 @@ bool is_winner(const board b, const bool playerturn) {
 }
 
 int is_draw(const board b) {
-	for (int i = 0; i < ROWS; i++)
-		for (int j = 0; j < COLS; j++)
-			if (b[i][j] == EMPTY_SYMBOL)
-				return false;
+	for (int i = 0; i < COLS; i++)
+		if (b[0][i] == EMPTY_SYMBOL)
+			return false;
 	return true;
 }
 
-inline bool is_valid_position(const int r1, const int c1, const int r2,
-							  const int c2) {
+/* CHECK: why does adding the `inline` qualifier break this? */
+bool is_valid_position(const int r1, const int c1, const int r2, const int c2) {
 	return (r1 >= 0 && r1 < ROWS && c1 >= 0 && c1 < COLS && r2 >= 0 &&
 			r2 < ROWS && c2 >= 0 && c2 < COLS);
 }
@@ -223,7 +226,6 @@ inline bool is_valid_position(const int r1, const int c1, const int r2,
  */
 int determine_sequence_score(const board b, const bool playerturn) {
 	struct chain longest = {INT_MIN, 0};
-	const char sym		 = playerturn ? PLAYER_SYMBOL : AI_SYMBOL;
 	bool open			 = false;
 	int score = 0, r = 0, c = 0;
 
@@ -332,26 +334,46 @@ bool terminal_state_reached(const board b) {
 	return is_draw(b) || is_winner(b, true) || is_winner(b, false);
 }
 
-struct minimax_eval minimax(board b, int depth, int alpha, int beta,
-							bool playerturn) {
-	struct minimax_eval ret = {0, 0};
-
+struct minimax_eval alphabeta(board b, int depth, int alpha, int beta,
+							  bool playerturn) {
 	if (depth == MAX_DEPTH || terminal_state_reached(b)) {
 		int score = evaluate_heuristic(b);
 		return (struct minimax_eval){-1, score};
 	}
 
-	for (int i = 0; i < COLS; i++) {
-		if (b[0][i] != EMPTY_SYMBOL) /* is full column */
-			continue;
-		place_piece(b, i, false);
-		ret = minimax(b, depth - 1, alpha, beta, !playerturn);
-		remove_piece(b, i);
-		/* Updating alpha/beta */
-		if (playerturn) {
+	struct minimax_eval ret = {-1, 0};
 
-		} else {
+	if (playerturn) {
+		ret.score = INT_MIN;
+		for (int i = 0; i < COLS; i++) {
+			if (b[0][i] != EMPTY_SYMBOL) /* is full column */
+				continue;
+			place_piece(b, i, false);
+			struct minimax_eval curr =
+				alphabeta(b, depth - 1, alpha, beta, false);
+			remove_piece(b, i);
 
+			if (curr.score > ret.score)
+				ret = curr;
+			alpha = MAX(ret.score, alpha);
+			if (ret.score > beta)
+				break;
+		}
+	} else {
+		ret.score = INT_MAX;
+		for (int i = 0; i < COLS; i++) {
+			if (b[0][i] != EMPTY_SYMBOL) /* is full column */
+				continue;
+			place_piece(b, i, false);
+			struct minimax_eval curr =
+				alphabeta(b, depth - 1, alpha, beta, true);
+			remove_piece(b, i);
+
+			if (curr.score < ret.score)
+				ret = curr;
+			beta = MIN(ret.score, beta);
+			if (ret.score > alpha)
+				break;
 		}
 	}
 
@@ -359,9 +381,7 @@ struct minimax_eval minimax(board b, int depth, int alpha, int beta,
 }
 
 void ai_turn(board b) {
-	int alpha	 = INT_MIN;
-	int beta	 = INT_MAX;
-	int aicolumn = minimax(b, 0, alpha, beta, false).column;
+	int aicolumn = alphabeta(b, 0, INT_MIN, INT_MAX, false).column;
 	place_piece(b, aicolumn, false);
 }
 

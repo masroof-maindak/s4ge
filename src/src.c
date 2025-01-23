@@ -17,14 +17,11 @@ typedef unsigned char bool;
 
 #define MAX_DEPTH 6
 
-#define RESET	"\x1b[0m"
-#define RED		"\x1b[31m"
-#define GREEN	"\x1b[32m"
-#define YELLOW	"\x1b[33m"
-#define BLUE	"\x1b[34m"
-#define MAGENTA "\x1b[35m"
-#define CYAN	"\x1b[36m"
-#define WHITE	"\x1b[37m"
+#define RESET "\x1b[0m"
+#define RED	  "\x1b[31m"
+#define BLUE  "\x1b[34m"
+#define BOLD  "\x1b[1m"
+#define CLEAR "\x1b[2J\x1b[H"
 
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
@@ -43,10 +40,15 @@ struct chain {
 };
 
 void print_board(board b) {
-	system("clear");
+	// printf(CLEAR);
 	for (int i = 0; i < ROWS; i++) {
 		for (int j = 0; j < COLS; j++) {
-			printf("%c ", b[i][j]);
+			char *clr = RESET;
+			if (b[i][j] == PLAYER_SYMBOL)
+				clr = BOLD BLUE;
+			else if (b[i][j] == AI_SYMBOL)
+				clr = BOLD RED;
+			printf("%s%c " RESET, clr, b[i][j]);
 		}
 		printf("\n");
 	}
@@ -240,7 +242,8 @@ int determine_sequence_score(board b, const bool playerturn) {
 		}
 	}
 
-	score = longest.length * 10;
+	score = longest.length;
+	score = score * score * 10;
 
 	if (longest.length < 3)
 		return score;
@@ -267,7 +270,7 @@ int determine_sequence_score(board b, const bool playerturn) {
 				b[r + WIN_COUNT][c - WIN_COUNT] == EMPTY_SYMBOL);
 	}
 
-	return open ? score + 100 : score;
+	return open ? score + 1000 : score;
 }
 
 /*

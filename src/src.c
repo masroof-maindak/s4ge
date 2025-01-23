@@ -281,34 +281,18 @@ int piece_location_score(board b, const bool playerturn) {
 	const char sym	 = playerturn ? PLAYER_SYMBOL : AI_SYMBOL;
 	int score		 = 0;
 
-	/* Piece Value: +0 +1 +2 +3 +2 +1 +0 */
-	/* Columns:      0  1  2  3  4  5  6 */
+	const int piecevals[COLS] = {0, 1, 2, 3, 2, 1, 0};
 
-	for (int i = center - 2; i <= center + 2; i++) {
-		for (int j = ROWS - 1; j >= 0; j--) {
-			if (b[j][i] == sym) {
-				switch (i) {
-				case 3:
-					score += 1;
-					/* FALLTHRU */
-				case 2:
-				case 4:
-					score += 1;
-					/* FALLTHRU */
-				case 1:
-				case 5:
-					score += 1;
-				}
-			}
-		}
-	}
+	for (int i = 0; i < COLS; i++)
+		for (int j = 0; j < COLS; j++)
+			score += b[j][i] == sym ? piecevals[i] : 0;
 
 	return score;
 }
 
 /*
- * @brief evaluates the 'score' of a board w.r.t the player and the AI -- the
- * player's score would be increasingly positive, and the AI's would be
+ * @brief evaluates the 'score' of a board w.r.t the player and the AI --
+ * the player's score would be increasingly positive, and the AI's would be
  * increasingly negative.
  */
 int evaluate_heuristic(board b, enum WINNER w) {
@@ -322,17 +306,17 @@ int evaluate_heuristic(board b, enum WINNER w) {
 		return score;
 
 	score += compute_chain_score(b, true);
-	score -= compute_chain_score(b, false);
+	score -= compute_chain_score(b, false) / 2;
 
 	score += piece_location_score(b, true);
-	score -= piece_location_score(b, false);
+	score -= piece_location_score(b, false) / 2;
 
 	return score;
 }
 
 /*
- * @brief determines if the game is over i.e minimax node has reached a terminal
- * state
+ * @brief determines if the game is over i.e minimax node has reached a
+ * terminal state
  */
 enum WINNER terminal_state_reached(board b) {
 	if (is_draw(b))
@@ -355,17 +339,21 @@ struct mm_res alphabeta(board b, const int depth, int alpha, int beta,
 		return best;
 	}
 
-	/* TODO: traverse more likely columns first */
+	/* Central columns are favoured by the heuristic, and picking more
+	 * likely choices first leads to greater odds of pruning occuring */
+
+	const int goodcols[COLS] = {3, 2, 4, 1, 5, 0, 6};
 
 	for (int i = 0; i < COLS && alpha < beta; i++) {
-		if (b[0][i] != EMPTY_SYMBOL) /* is full column */
+		int aicol = goodcols[i];
+
+		if (b[0][aicol] != EMPTY_SYMBOL) /* is full column */
 			continue;
 
-		place_piece(b, i, playerturn);
+		place_piece(b, aicol, playerturn);
 		struct mm_res child = alphabeta(b, depth - 1, alpha, beta, !playerturn);
-		remove_piece(b, i);
-
-		child.column = i;
+		child.column		= aicol;
+		remove_piece(b, aicol);
 
 		if (playerturn) {
 			if (child.score > best.score)

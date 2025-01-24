@@ -277,7 +277,6 @@ int compute_chain_score(board b, const bool playerturn) {
  * board; pieces towards the center are worth more
  */
 int piece_location_score(board b, const bool playerturn) {
-	const int center = COLS / 2;
 	const char sym	 = playerturn ? PLAYER_SYMBOL : AI_SYMBOL;
 	int score		 = 0;
 
